@@ -3,8 +3,10 @@ from urllib.parse import urlparse, urljoin, urldefrag
 from html.parser import HTMLParser
 
 def scraper(url, resp):
+    with open("scraper.log", "a") as f:
+        f.write(f"[SCRAPER] got: {url}\n")
     links = extract_next_links(url, resp)
-    return [link for link in links if is_valid(link)]
+    return list({link for link in links if is_valid(link)})
 
 class LinkExtractor(HTMLParser):
     def __init__(self, base):
@@ -12,7 +14,7 @@ class LinkExtractor(HTMLParser):
         self.base = base
         self.links = []
     
-    def tag_handler(self, tag, attributes):
+    def handle_starttag(self, tag, attributes):
         if tag.lower() != 'a':
             return
         for (attribute, val) in attributes:
@@ -30,18 +32,19 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
     
-    if not resp:
+    if resp is None:
         return []
-    if resp.status < 200 or resp.status >= 300:
+    if resp.status < 200 or resp.status >= 400:
         return []
     
     res = resp.raw_response
-    if not res:
+    if res is None:
         return []
     
     c_type = res.headers.get("Content-Type", "").lower()
+    c_type = c_type.lower() if c_type else ""
 
-    if "text/html" not in c_type:
+    if c_type and "text/html" not in c_type:
         return []
     
     if hasattr(res, "text"):
@@ -83,6 +86,22 @@ def is_valid(url):
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
             return False
+        
+        allowed = (
+            "ics.uci.edu",
+            "cs.uci.edu",
+            "informatics.uci.edu",
+            "stat.uci.edu",
+            "today.uci.edu",
+        )
+        host = parsed.netloc.lower()
+        if not any(host == d or host.endswith("." + d) for d in allowed):
+            return False
+        
+        if host == "today.uci.edu":
+            if not parsed.path.startswith("/department/information_computer_sciences"):
+                return False
+        
         return not re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
             + r"|png|tiff?|mid|mp2|mp3|mp4"
