@@ -25,7 +25,7 @@ class TextExtractor(HTMLParser):
         super().__init__()
         self.chunks = []
     
-    def data_handler(self, data):
+    def handle_data(self, data):
         if data:
             self.chunks.append(data)
     
@@ -43,32 +43,37 @@ def tokenize(text):
 
 def extract_subdomain(url):
     p = urlparse(url)
-    host = p.netloc.lower()
-    return host
+    return p.netloc.lower()
 
 def scraper(url, resp):
     with open("scraper.log", "a") as f:
         f.write(f"[SCRAPER] got: {url}\n")
+
     links = extract_next_links(url, resp)
 
     if resp and 200 <= resp.status < 400 and resp.raw_response:
-        html = resp.raw_response.text if hasattr(resp.raw_response, "text") else resp.raw_response.content.decode("utf-8", "ignore")
+        raw = resp.raw_response
+        if hasattr(raw, "text"):
+            html = raw.text
+        else:
+            html = raw.content.decode("utf-8", "ignore")
+
         text = extract_text(html)
         words = tokenize(text)
-        words = list(word for word in words if word not in STOPWORDS)
+        words = [w for w in words if w not in STOPWORDS]
 
-        c_url = urldefrag(resp.url or url)
-        subdomain = extract_subdomain(c_url)
+        canon_url, _ = urldefrag(resp.url if resp.url else url)
+        subdomain = extract_subdomain(canon_url)
 
         rec = {
-            "url": c_url,
+            "url": canon_url,
             "subdomain": subdomain,
             "word_count": len(words),
-            "tokens": words
+            "tokens": words,
         }
 
-        with open("data.txt", "a") as file:
-            file.write(json.dumps(rec) + '\n')
+        with open("data.txt", "a") as data_f:
+            data_f.write(json.dumps(rec) + "\n")
 
     return list({link for link in links if is_valid(link)})
 
