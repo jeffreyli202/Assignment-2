@@ -35,7 +35,7 @@ class TextExtractor(HTMLParser):
 def extract_text(html):
     parser = TextExtractor()
     parser.feed(html)
-    return parser.get_text()
+    return parser.combine_chunks()
 
 def tokenize(text):
     text = text.lower()
@@ -57,7 +57,7 @@ def scraper(url, resp):
         words = tokenize(text)
         words = list(word for word in words if word not in STOPWORDS)
 
-        c_url = urldefrag(resp.url if resp.url else url)
+        c_url = urldefrag(resp.url or url)
         subdomain = extract_subdomain(c_url)
 
         rec = {
@@ -68,7 +68,7 @@ def scraper(url, resp):
         }
 
         with open("data.txt", "a") as file:
-            f.write(json.dumps(rec) + '\n')
+            file.write(json.dumps(rec) + '\n')
 
     return list({link for link in links if is_valid(link)})
 
