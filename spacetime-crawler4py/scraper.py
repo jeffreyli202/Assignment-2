@@ -1,17 +1,16 @@
+import json
 import re
 from urllib.parse import urlparse, urljoin, urldefrag
 from html.parser import HTMLParser
 
-def scraper(url, resp):
-    with open("scraper.log", "a") as f:
-        f.write(f"[SCRAPER] got: {url}\n")
-    links = extract_next_links(url, resp)
-    return list({link for link in links if is_valid(link)})
+STOPWORDS = {
+    "the", "and", "of", "to", "a", "in", "for", "is", "on", "that", "with", "as",
+    "by", "at", "an", "be", "from", "this", "or", "it", "are", "was"
+}
 
 class LinkExtractor(HTMLParser):
-    def __init__(self, base):
+    def __init__(self):
         super().__init__()
-        self.base = base
         self.links = []
     
     def handle_starttag(self, tag, attributes):
@@ -20,6 +19,59 @@ class LinkExtractor(HTMLParser):
         for (attribute, val) in attributes:
             if attribute.lower() == 'href' and val:
                 self.links.append(val.strip())
+
+class TextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.chunks = []
+    
+    def data_handler(self, data):
+        if data:
+            self.chunks.append(data)
+    
+    def combine_chunks(self):
+        return ''.join(self.chunks)
+
+def extract_text(html):
+    parser = TextExtractor()
+    parser.feed(html)
+    return parser.get_text()
+
+def tokenize(text):
+    text = text.lower()
+    return re.findall(r"[a-z0-9]+", text)
+
+def extract_subdomain(url):
+    p = urlparse(url)
+    host = p.netloc.lower()
+    return host
+
+def scraper(url, resp):
+    with open("scraper.log", "a") as f:
+        f.write(f"[SCRAPER] got: {url}\n")
+    links = extract_next_links(url, resp)
+
+    if resp and 200 <= resp.status < 400 and resp.raw_response:
+        html = resp.raw_response.text if hasattr(resp.raw_response, "text") else resp.raw_response.content.decode("utf-8", "ignore")
+        text = extract_text(html)
+        words = tokenize(text)
+        words = list(word for word in words if word not in STOPWORDS)
+
+        c_url = urldefrag(resp.url if resp.url else url)
+        subdomain = extract_subdomain(c_url)
+
+        rec = {
+            "url": c_url,
+            "subdomain": subdomain,
+            "word_count": len(words),
+            "tokens": words
+        }
+
+        with open("data.txt", "a") as file:
+            f.write(json.dumps(rec) + '\n')
+
+    return list({link for link in links if is_valid(link)})
+
 
 def extract_next_links(url, resp):
     # Implementation required.
@@ -55,7 +107,7 @@ def extract_next_links(url, resp):
         except Exception: return []
 
     base_url = resp.url if resp.url else url
-    parser = LinkExtractor(base_url)
+    parser = LinkExtractor()
 
     try:
         parser.feed(html)
